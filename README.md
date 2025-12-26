@@ -15,7 +15,7 @@ A python Mac app that acts as a better search for your files. Currently working 
 ## How it works
 
 ```
-New file in Downloads → Extract text → Generate embedding → Store in DuckDB → Semantic search → open up  
+New file in Downloads → Extract text → Generate embedding → Store in DuckDB → Semantic search
 ```
 
 ![Search Interface](screenshots/search_inter.png)
