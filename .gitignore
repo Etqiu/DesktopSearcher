@@ -43,3 +43,12 @@ htmlcov/
 
 # Logs
 *.log
+
+# Temporary Test Files
+test_tk.py
+test_cocoa.py
+demo_widget.py
+launch_widget.sh
+test_webkit.py
+test_webkit_real.py
+

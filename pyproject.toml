@@ -1,5 +1,5 @@
 [project]
-name = "test-project"
+name = "desktop-searcher"
 version = "0.1.0"
 description = "Starter Python project managed by uv"
 requires-python = ">=3.9"

@@ -36,10 +36,10 @@ STABILITY_DELAY = 2  # seconds to wait for file to finish writing
 class BrainIndexer:
     """Handles text extraction, embedding generation, and DB storage."""
     
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, model=None):
         self.db_path = db_path
         self.conn = duckdb.connect(str(db_path))
-        self.model = None  # Lazy load embedding model
+        self.model = model  # Use provided model or lazy load
         self._init_db()
     
     def _init_db(self):
@@ -117,7 +117,13 @@ class BrainIndexer:
         
         # Get metadata
         stat = file_path.stat()
-        created_at = datetime.fromtimestamp(stat.st_ctime)
+        try:
+            # On macOS/BSD, st_birthtime is the creation (download) time
+            created_at = datetime.fromtimestamp(stat.st_birthtime)
+        except AttributeError:
+            # Fallback for Linux/Windows
+            created_at = datetime.fromtimestamp(stat.st_ctime)
+            
         size_bytes = stat.st_size
         
         # Extract text
@@ -129,7 +135,7 @@ class BrainIndexer:
             snippet = ""
             embedding = None
         else:
-            snippet = full_text[:500]  # First 500 chars
+            snippet = full_text[:2000]  # First 2000 chars
             
             # Generate embedding
             model = self._get_embedding_model()
