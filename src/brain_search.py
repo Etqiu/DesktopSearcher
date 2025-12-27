@@ -17,8 +17,8 @@ def perform_search(query, model, db_path):
     try:
         query_embedding = model.encode(query).tolist()
         
-        # Connect to database (default mode to share config with indexer)
-        conn = duckdb.connect(str(db_path))
+        # Connect to database in READ_ONLY mode to avoid writer lock conflicts
+        conn = duckdb.connect(str(db_path), config={'access_mode': 'READ_ONLY'})
         
         # Optimization: Perform cosine similarity in DuckDB SQL
         # list_cosine_similarity is available in DuckDB 0.10.0+
@@ -78,7 +78,7 @@ def perform_search(query, model, db_path):
 def get_recent_files(db_path, limit=50):
     """Fetch recently indexed files."""
     try:
-        conn = duckdb.connect(str(db_path))
+        conn = duckdb.connect(str(db_path), config={'access_mode': 'READ_ONLY'})
         # Return format matching search results: (score, filename, path, snippet)
         # Score is 1.0 for recent files
         results = conn.execute(f"""

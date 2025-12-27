@@ -23,7 +23,8 @@ from AppKit import (
     NSTextFieldSquareBezel, NSFocusRingTypeNone, NSBox, NSBoxCustom, NSBoxSeparator,
     NSCursor, NSTrackingArea, NSTrackingMouseEnteredAndExited, NSTrackingActiveInActiveApp,
     NSWindowStyleMaskFullSizeContentView, NSWindowTitleHidden, NSButtonTypeMomentaryPushIn,
-    NSWorkspace, NSImageView, NSImage
+    NSWorkspace, NSImageView, NSImage, NSFloatingWindowLevel, NSNormalWindowLevel,
+    NSLineBreakByTruncatingMiddle, NSLineBreakByTruncatingTail
 )
 from Foundation import NSMakeRect, NSTimer, NSURL, NSURLRequest
 from WebKit import WKWebView
@@ -131,10 +132,10 @@ class BrainApp(NSObject):
         
         # No bulk reindex on startup; watcher does a lightweight sync
         
-        # Create Window
+        # Create Window - fixed size, not resizable
         self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT),
-            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView,
+            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskFullSizeContentView,
             NSBackingStoreBuffered,
             False
         )
@@ -144,7 +145,12 @@ class BrainApp(NSObject):
         self.window.setTitleVisibility_(NSWindowTitleHidden)
         self.window.setOpaque_(False)
         self.window.setBackgroundColor_(NSColor.clearColor())
-        self.window.setLevel_(3) # Floating level
+        # Use normal window level so other windows can be on top
+        try:
+            self.window.setLevel_(NSNormalWindowLevel)
+        except Exception:
+            # Fallback to default normal level integer if constant unavailable
+            self.window.setLevel_(0)
         self.window.setMovableByWindowBackground_(True)
         
         # Visual Effect View (Blur Background)
@@ -260,17 +266,25 @@ class BrainApp(NSObject):
         self.rightPane.setTranslatesAutoresizingMaskIntoConstraints_(False)
         self.splitView.addSubview_(self.rightPane)
 
-        # Preview image (for images/PDF first page via WebView separately)
+        # Preview container to avoid overlapping and allow responsive sizing
+        self.previewContainer = NSView.alloc().init()
+        self.previewContainer.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        self.rightPane.addSubview_(self.previewContainer)
+
+        # Preview image (for images)
         self.previewImageView = NSImageView.alloc().init()
         self.previewImageView.setTranslatesAutoresizingMaskIntoConstraints_(False)
-        self.previewImageView.setImageScaling_(3)  # scale proportionally down
-        self.rightPane.addSubview_(self.previewImageView)
+        # NSImageScaleProportionallyUpOrDown = 3: scale to fit container, maintain aspect ratio
+        self.previewImageView.setImageScaling_(3)
+        # Prevent image from demanding more space than container provides
+        self.previewImageView.setImageFrameStyle_(0)  # NSImageFrameNone
+        self.previewContainer.addSubview_(self.previewImageView)
 
         # Web view for PDF/HTML preview
         self.previewWebView = WKWebView.alloc().init()
         self.previewWebView.setTranslatesAutoresizingMaskIntoConstraints_(False)
         self.previewWebView.setValue_forKey_(False, "drawsBackground")
-        self.rightPane.addSubview_(self.previewWebView)
+        self.previewContainer.addSubview_(self.previewWebView)
 
         # Metadata labels
         self.metaTitle = NSTextField.labelWithString_("Metadata")
@@ -286,6 +300,15 @@ class BrainApp(NSObject):
             val = NSTextField.labelWithString_("")
             val.setTextColor_(NSColor.whiteColor())
             val.setTranslatesAutoresizingMaskIntoConstraints_(False)
+            # Prevent long text from forcing window growth
+            try:
+                # Prefer single-line truncation in the middle to preserve path ends
+                if hasattr(val, 'cell') and val.cell() is not None:
+                    val.cell().setUsesSingleLineMode_(True)
+                    val.cell().setTruncatesLastVisibleLine_(True)
+                    val.cell().setLineBreakMode_(NSLineBreakByTruncatingMiddle)
+            except Exception:
+                pass
             self.rightPane.addSubview_(key)
             self.rightPane.addSubview_(val)
             return key, val
@@ -351,49 +374,65 @@ class BrainApp(NSObject):
             self.documentView.widthAnchor().constraintEqualToAnchor_(self.scrollView.widthAnchor()),
             self.documentView.heightAnchor().constraintGreaterThanOrEqualToAnchor_(self.scrollView.heightAnchor()),
 
-            # Right Pane layout
-            self.previewImageView.topAnchor().constraintEqualToAnchor_constant_(self.rightPane.topAnchor(), 10),
-            self.previewImageView.centerXAnchor().constraintEqualToAnchor_(self.rightPane.centerXAnchor()),
-            self.previewImageView.heightAnchor().constraintEqualToConstant_(260),
-            self.previewImageView.widthAnchor().constraintEqualToConstant_(360),
+            # Preview container layout - flexible height, anchored above metadata
+            self.previewContainer.topAnchor().constraintEqualToAnchor_constant_(self.rightPane.topAnchor(), 10),
+            self.previewContainer.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 10),
+            self.previewContainer.trailingAnchor().constraintEqualToAnchor_constant_(self.rightPane.trailingAnchor(), -10),
+            # Bottom anchored to metadata title with gap - this makes preview fill available space
+            self.previewContainer.bottomAnchor().constraintEqualToAnchor_constant_(self.metaTitle.topAnchor(), -15),
 
-            self.previewWebView.topAnchor().constraintEqualToAnchor_constant_(self.rightPane.topAnchor(), 10),
-            self.previewWebView.leadingAnchor().constraintEqualToAnchor_(self.rightPane.leadingAnchor()),
-            self.previewWebView.trailingAnchor().constraintEqualToAnchor_(self.rightPane.trailingAnchor()),
-            self.previewWebView.heightAnchor().constraintEqualToConstant_(260),
+            # Image preview fills container
+            self.previewImageView.topAnchor().constraintEqualToAnchor_(self.previewContainer.topAnchor()),
+            self.previewImageView.leadingAnchor().constraintEqualToAnchor_(self.previewContainer.leadingAnchor()),
+            self.previewImageView.trailingAnchor().constraintEqualToAnchor_(self.previewContainer.trailingAnchor()),
+            self.previewImageView.bottomAnchor().constraintEqualToAnchor_(self.previewContainer.bottomAnchor()),
 
-            self.metaTitle.topAnchor().constraintEqualToAnchor_constant_(self.previewWebView.bottomAnchor(), 20),
+            # Web preview fills container
+            self.previewWebView.topAnchor().constraintEqualToAnchor_(self.previewContainer.topAnchor()),
+            self.previewWebView.leadingAnchor().constraintEqualToAnchor_(self.previewContainer.leadingAnchor()),
+            self.previewWebView.trailingAnchor().constraintEqualToAnchor_(self.previewContainer.trailingAnchor()),
+            self.previewWebView.bottomAnchor().constraintEqualToAnchor_(self.previewContainer.bottomAnchor()),
+
+            # Metadata anchors below preview container
+            self.metaTitle.topAnchor().constraintEqualToAnchor_constant_(self.previewContainer.bottomAnchor(), 20),
             self.metaTitle.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
 
             self.metaNameKey.topAnchor().constraintEqualToAnchor_constant_(self.metaTitle.bottomAnchor(), 12),
             self.metaNameKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
             self.metaNameVal.centerYAnchor().constraintEqualToAnchor_(self.metaNameKey.centerYAnchor()),
             self.metaNameVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaNameKey.trailingAnchor(), 20),
+            self.metaNameVal.trailingAnchor().constraintLessThanOrEqualToAnchor_constant_(self.rightPane.trailingAnchor(), -20),
 
             self.metaWhereKey.topAnchor().constraintEqualToAnchor_constant_(self.metaNameKey.bottomAnchor(), 8),
             self.metaWhereKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
             self.metaWhereVal.centerYAnchor().constraintEqualToAnchor_(self.metaWhereKey.centerYAnchor()),
             self.metaWhereVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaWhereKey.trailingAnchor(), 20),
+            self.metaWhereVal.trailingAnchor().constraintLessThanOrEqualToAnchor_constant_(self.rightPane.trailingAnchor(), -20),
 
             self.metaTypeKey.topAnchor().constraintEqualToAnchor_constant_(self.metaWhereKey.bottomAnchor(), 8),
             self.metaTypeKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
             self.metaTypeVal.centerYAnchor().constraintEqualToAnchor_(self.metaTypeKey.centerYAnchor()),
             self.metaTypeVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaTypeKey.trailingAnchor(), 20),
+            self.metaTypeVal.trailingAnchor().constraintLessThanOrEqualToAnchor_constant_(self.rightPane.trailingAnchor(), -20),
 
             self.metaSizeKey.topAnchor().constraintEqualToAnchor_constant_(self.metaTypeKey.bottomAnchor(), 8),
             self.metaSizeKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
             self.metaSizeVal.centerYAnchor().constraintEqualToAnchor_(self.metaSizeKey.centerYAnchor()),
             self.metaSizeVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaSizeKey.trailingAnchor(), 20),
+            self.metaSizeVal.trailingAnchor().constraintLessThanOrEqualToAnchor_constant_(self.rightPane.trailingAnchor(), -20),
 
             self.metaCreatedKey.topAnchor().constraintEqualToAnchor_constant_(self.metaSizeKey.bottomAnchor(), 8),
             self.metaCreatedKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
             self.metaCreatedVal.centerYAnchor().constraintEqualToAnchor_(self.metaCreatedKey.centerYAnchor()),
             self.metaCreatedVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaCreatedKey.trailingAnchor(), 20),
+            self.metaCreatedVal.trailingAnchor().constraintLessThanOrEqualToAnchor_constant_(self.rightPane.trailingAnchor(), -20),
 
             self.metaModifiedKey.topAnchor().constraintEqualToAnchor_constant_(self.metaCreatedKey.bottomAnchor(), 8),
             self.metaModifiedKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
             self.metaModifiedVal.centerYAnchor().constraintEqualToAnchor_(self.metaModifiedKey.centerYAnchor()),
             self.metaModifiedVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaModifiedKey.trailingAnchor(), 20)
+            ,
+            self.metaModifiedVal.trailingAnchor().constraintLessThanOrEqualToAnchor_constant_(self.rightPane.trailingAnchor(), -20)
             ,
             # Analysis Container fills area (hidden unless Analysis is selected)
             self.analysisContainer.topAnchor().constraintEqualToAnchor_constant_(self.navStackView.bottomAnchor(), 20),
@@ -689,7 +728,7 @@ class BrainApp(NSObject):
             self.previewWebView.setHidden_(True)
 
             ext = p.suffix.lower()
-            if ext in {".png", ".jpg", ".jpeg"}:
+            if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".tiff", ".bmp"}:
                 try:
                     img = NSImage.alloc().initWithContentsOfFile_(str(p))
                     if img:
@@ -708,7 +747,7 @@ class BrainApp(NSObject):
             else:
                 # For text-like files, show small HTML preview via WebView using snippet from DB
                 try:
-                    conn = duckdb.connect(str(DB_PATH))
+                    conn = duckdb.connect(str(DB_PATH), config={'access_mode': 'READ_ONLY'})
                     row = conn.execute("SELECT text_snippet FROM files_index WHERE path = ?", [str(p.absolute())]).fetchone()
                     conn.close()
                     snippet = row[0] if row and row[0] else ""
