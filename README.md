@@ -45,4 +45,26 @@ This opens a floating, transparent window where you can:
 - Click results to reveal them in Finder
 - Press `Esc` or close the window to quit
 
+## Development
+
+### Running Tests
+To run the test suite (including unit tests and integration tests), use `pytest`:
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run specific test file
+python -m pytest tests/test_optimization.py
+
+# Run with output (print statements)
+python -m pytest -s
+```
+
+The tests cover:
+- Import verification
+- OCR functionality (requires images in Downloads)
+- Search optimization and memory usage
+
+
 

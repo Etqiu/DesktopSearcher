@@ -21,7 +21,9 @@ def load_data():
         return None
         
     try:
-        conn = duckdb.connect(str(DB_PATH), read_only=True)
+        # Try connecting with explicit READ_ONLY config
+        # This is often more robust than read_only=True kwarg in some versions
+        conn = duckdb.connect(str(DB_PATH), config={'access_mode': 'READ_ONLY'})
         
         # Get basic stats
         files_df = conn.execute("""
@@ -38,6 +40,10 @@ def load_data():
         conn.close()
         return files_df
     except Exception as e:
+        st.error(f"Error loading data: {e}")
+        import traceback
+        st.code(traceback.format_exc())
+        return None
         st.error(f"Error loading data: {e}")
         return None
 

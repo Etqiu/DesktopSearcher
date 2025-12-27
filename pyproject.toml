@@ -35,6 +35,18 @@ dependencies = [
     "typer>=0.20.1",
     "watchdog>=6.0.0",
     "xgboost>=2.1.4",
+    # Analytics dashboard
+    "streamlit>=1.50.0",
+    "plotly>=6.5.0",
+    # macOS UI + WebKit (only on macOS)
+    "pyobjc-core>=11.1; sys_platform == 'darwin'",
+    "pyobjc-framework-cocoa>=11.1; sys_platform == 'darwin'",
+    "pyobjc-framework-webkit>=11.1; sys_platform == 'darwin'",
+    # OCR backends (optional, works cross-platform)
+    "pytesseract>=0.3.10",
+    "Pillow>=11.0.0",
+    # macOS Vision OCR (only on macOS)
+    "pyobjc-framework-Vision>=11.1; sys_platform == 'darwin'",
 ]
 
 [build-system]

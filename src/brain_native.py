@@ -10,10 +10,11 @@ import numpy as np
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 import objc
+from datetime import datetime
 from AppKit import (
     NSApplication, NSWindow, NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
     NSWindowStyleMaskResizable, NSBackingStoreBuffered, NSColor, NSRect, NSPoint, NSSize,
-    NSTextField, NSButton, NSStackView, NSScrollView, NSView, NSVisualEffectView,
+    NSTextField, NSButton, NSStackView, NSScrollView, NSView, NSVisualEffectView, NSSplitView,
     NSVisualEffectMaterialHUDWindow, NSVisualEffectBlendingModeBehindWindow,
     NSLayoutAttributeCenterX, NSLayoutAttributeCenterY, NSLayoutAttributeWidth,
     NSLayoutAttributeHeight, NSLayoutAttributeTop, NSLayoutAttributeLeading,
@@ -22,18 +23,29 @@ from AppKit import (
     NSTextFieldSquareBezel, NSFocusRingTypeNone, NSBox, NSBoxCustom, NSBoxSeparator,
     NSCursor, NSTrackingArea, NSTrackingMouseEnteredAndExited, NSTrackingActiveInActiveApp,
     NSWindowStyleMaskFullSizeContentView, NSWindowTitleHidden, NSButtonTypeMomentaryPushIn,
-    NSWorkspace
+    NSWorkspace, NSImageView, NSImage
 )
 from Foundation import NSMakeRect, NSTimer, NSURL, NSURLRequest
 from WebKit import WKWebView
 
-from app import DB_PATH, BrainIndexer, WATCH_DIR
-from brain_search import perform_search
+from app import DB_PATH, BrainIndexer, WATCH_DIR, DownloadWatcherHandler
+from watchdog.observers import Observer
+from brain_search import perform_search, get_recent_files
+try:
+    # Optional: connect OCR utilities for future UI hooks
+    from brain_ocr import ocr_image
+except Exception:
+    ocr_image = None
 
 # --- UI Constants ---
-WINDOW_WIDTH = 600
+WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 500
 ROW_HEIGHT = 50
+
+class FlippedView(NSView):
+    """A view with a top-left origin so scrolling to (0,0) goes to the top."""
+    def isFlipped(self):
+        return True
 
 class SearchResultRow(NSView):
     """Custom view for a result row."""
@@ -109,11 +121,15 @@ class BrainApp(NSObject):
 
     def applicationDidFinishLaunching_(self, notification):
         self.model = None
+        self.model_lock = threading.Lock()
         self.search_timer = None
         self.is_indexing = False
+        self.selected_path = None
         
-        # Auto-reindex on startup
-        threading.Thread(target=self.reindex_thread, daemon=True).start()
+        # Start filesystem watcher and initial sync (only add/remove)
+        self.start_watchdog()
+        
+        # No bulk reindex on startup; watcher does a lightweight sync
         
         # Create Window
         self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
@@ -145,8 +161,11 @@ class BrainApp(NSObject):
         self.window.makeKeyAndOrderFront_(None)
         self.window.orderFrontRegardless()
         
-        # Load Model
-        threading.Thread(target=self.load_model, daemon=True).start()
+        # Load Model (CPU) in background
+        threading.Thread(target=self._get_shared_model, daemon=True).start()
+        
+        # Show recent files by default
+        self.performSearch_("")
 
     def setupUI(self):
         # --- Navigation Bar ---
@@ -199,38 +218,94 @@ class BrainApp(NSObject):
         self.separator.setTranslatesAutoresizingMaskIntoConstraints_(False)
         self.visualEffectView.addSubview_(self.separator)
         
-        # Scroll View for Results
+        # --- Split Pane ---
+        self.splitView = NSSplitView.alloc().init()
+        self.splitView.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        self.splitView.setDividerStyle_(1)  # thin divider
+        self.splitView.setVertical_(True)   # left-right split
+        self.visualEffectView.addSubview_(self.splitView)
+
+        # Left Pane: Results list
+        self.leftPane = NSView.alloc().init()
+        self.leftPane.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        self.splitView.addSubview_(self.leftPane)
+
         self.scrollView = NSScrollView.alloc().init()
         self.scrollView.setTranslatesAutoresizingMaskIntoConstraints_(False)
         self.scrollView.setDrawsBackground_(False)
         self.scrollView.setHasVerticalScroller_(True)
-        
-        # Stack View inside Scroll View
+
         self.stackView = NSStackView.alloc().init()
-        self.stackView.setOrientation_(1) # Vertical
+        self.stackView.setOrientation_(1)
         self.stackView.setAlignment_(NSLayoutAttributeLeading)
         self.stackView.setSpacing_(5)
         self.stackView.setTranslatesAutoresizingMaskIntoConstraints_(False)
-        
-        # Flip coordinate system for stack view (top-down)
-        self.documentView = NSView.alloc().init()
+
+        self.documentView = FlippedView.alloc().init()
         self.documentView.setTranslatesAutoresizingMaskIntoConstraints_(False)
         self.documentView.addSubview_(self.stackView)
-        
+
         self.scrollView.setDocumentView_(self.documentView)
-        self.visualEffectView.addSubview_(self.scrollView)
-        
-        # --- Analysis View ---
+        self.leftPane.addSubview_(self.scrollView)
+        # Ensure initial scroll position is at the top
+        try:
+            cv = self.scrollView.contentView()
+            cv.scrollToPoint_(NSPoint(0, 0))
+            self.scrollView.reflectScrolledClipView_(cv)
+        except Exception:
+            pass
+
+        # Right Pane: Preview + Metadata
+        self.rightPane = NSView.alloc().init()
+        self.rightPane.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        self.splitView.addSubview_(self.rightPane)
+
+        # Preview image (for images/PDF first page via WebView separately)
+        self.previewImageView = NSImageView.alloc().init()
+        self.previewImageView.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        self.previewImageView.setImageScaling_(3)  # scale proportionally down
+        self.rightPane.addSubview_(self.previewImageView)
+
+        # Web view for PDF/HTML preview
+        self.previewWebView = WKWebView.alloc().init()
+        self.previewWebView.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        self.previewWebView.setValue_forKey_(False, "drawsBackground")
+        self.rightPane.addSubview_(self.previewWebView)
+
+        # Metadata labels
+        self.metaTitle = NSTextField.labelWithString_("Metadata")
+        self.metaTitle.setFont_(NSFont.systemFontOfSize_(15))
+        self.metaTitle.setTextColor_(NSColor.whiteColor())
+        self.metaTitle.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        self.rightPane.addSubview_(self.metaTitle)
+
+        def makeLabelPair(name):
+            key = NSTextField.labelWithString_(name)
+            key.setTextColor_(NSColor.lightGrayColor())
+            key.setTranslatesAutoresizingMaskIntoConstraints_(False)
+            val = NSTextField.labelWithString_("")
+            val.setTextColor_(NSColor.whiteColor())
+            val.setTranslatesAutoresizingMaskIntoConstraints_(False)
+            self.rightPane.addSubview_(key)
+            self.rightPane.addSubview_(val)
+            return key, val
+
+        self.metaNameKey, self.metaNameVal = makeLabelPair("Name")
+        self.metaWhereKey, self.metaWhereVal = makeLabelPair("Where")
+        self.metaTypeKey, self.metaTypeVal = makeLabelPair("Type")
+        self.metaSizeKey, self.metaSizeVal = makeLabelPair("Size")
+        self.metaCreatedKey, self.metaCreatedVal = makeLabelPair("Created")
+        self.metaModifiedKey, self.metaModifiedVal = makeLabelPair("Modified")
+
+        # --- Analysis View (separate container, toggled by Nav) ---
         self.analysisContainer = NSView.alloc().init()
         self.analysisContainer.setTranslatesAutoresizingMaskIntoConstraints_(False)
         self.analysisContainer.setHidden_(True)
         self.visualEffectView.addSubview_(self.analysisContainer)
-        
-        # Web View
+
         self.webView = WKWebView.alloc().init()
         self.webView.setTranslatesAutoresizingMaskIntoConstraints_(False)
-        # self.webView.setDrawsBackground_(False) # Might cause issues with WKWebView
-        self.webView.setValue_forKey_(False, "drawsBackground") # Correct way for WKWebView
+        self.webView.setValue_forKey_(False, "drawsBackground")
         self.analysisContainer.addSubview_(self.webView)
         
         # Constraints
@@ -258,27 +333,74 @@ class BrainApp(NSObject):
             self.separator.trailingAnchor().constraintEqualToAnchor_(self.visualEffectView.trailingAnchor()),
             self.separator.heightAnchor().constraintEqualToConstant_(1),
             
-            # Scroll View
-            self.scrollView.topAnchor().constraintEqualToAnchor_constant_(self.separator.bottomAnchor(), 0),
-            self.scrollView.leadingAnchor().constraintEqualToAnchor_(self.visualEffectView.leadingAnchor()),
-            self.scrollView.trailingAnchor().constraintEqualToAnchor_(self.visualEffectView.trailingAnchor()),
-            self.scrollView.bottomAnchor().constraintEqualToAnchor_(self.visualEffectView.bottomAnchor()),
-            
-            # Stack View
+            # Split View fills below separator
+            self.splitView.topAnchor().constraintEqualToAnchor_constant_(self.separator.bottomAnchor(), 0),
+            self.splitView.leadingAnchor().constraintEqualToAnchor_(self.visualEffectView.leadingAnchor()),
+            self.splitView.trailingAnchor().constraintEqualToAnchor_(self.visualEffectView.trailingAnchor()),
+            self.splitView.bottomAnchor().constraintEqualToAnchor_(self.visualEffectView.bottomAnchor()),
+
+            # Left Pane
+            self.scrollView.topAnchor().constraintEqualToAnchor_constant_(self.leftPane.topAnchor(), 0),
+            self.scrollView.leadingAnchor().constraintEqualToAnchor_(self.leftPane.leadingAnchor()),
+            self.scrollView.trailingAnchor().constraintEqualToAnchor_(self.leftPane.trailingAnchor()),
+            self.scrollView.bottomAnchor().constraintEqualToAnchor_(self.leftPane.bottomAnchor()),
+
             self.stackView.topAnchor().constraintEqualToAnchor_(self.documentView.topAnchor()),
             self.stackView.leadingAnchor().constraintEqualToAnchor_(self.documentView.leadingAnchor()),
             self.stackView.trailingAnchor().constraintEqualToAnchor_(self.documentView.trailingAnchor()),
-            
             self.documentView.widthAnchor().constraintEqualToAnchor_(self.scrollView.widthAnchor()),
             self.documentView.heightAnchor().constraintGreaterThanOrEqualToAnchor_(self.scrollView.heightAnchor()),
-            
-            # Analysis Container
+
+            # Right Pane layout
+            self.previewImageView.topAnchor().constraintEqualToAnchor_constant_(self.rightPane.topAnchor(), 10),
+            self.previewImageView.centerXAnchor().constraintEqualToAnchor_(self.rightPane.centerXAnchor()),
+            self.previewImageView.heightAnchor().constraintEqualToConstant_(260),
+            self.previewImageView.widthAnchor().constraintEqualToConstant_(360),
+
+            self.previewWebView.topAnchor().constraintEqualToAnchor_constant_(self.rightPane.topAnchor(), 10),
+            self.previewWebView.leadingAnchor().constraintEqualToAnchor_(self.rightPane.leadingAnchor()),
+            self.previewWebView.trailingAnchor().constraintEqualToAnchor_(self.rightPane.trailingAnchor()),
+            self.previewWebView.heightAnchor().constraintEqualToConstant_(260),
+
+            self.metaTitle.topAnchor().constraintEqualToAnchor_constant_(self.previewWebView.bottomAnchor(), 20),
+            self.metaTitle.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
+
+            self.metaNameKey.topAnchor().constraintEqualToAnchor_constant_(self.metaTitle.bottomAnchor(), 12),
+            self.metaNameKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
+            self.metaNameVal.centerYAnchor().constraintEqualToAnchor_(self.metaNameKey.centerYAnchor()),
+            self.metaNameVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaNameKey.trailingAnchor(), 20),
+
+            self.metaWhereKey.topAnchor().constraintEqualToAnchor_constant_(self.metaNameKey.bottomAnchor(), 8),
+            self.metaWhereKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
+            self.metaWhereVal.centerYAnchor().constraintEqualToAnchor_(self.metaWhereKey.centerYAnchor()),
+            self.metaWhereVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaWhereKey.trailingAnchor(), 20),
+
+            self.metaTypeKey.topAnchor().constraintEqualToAnchor_constant_(self.metaWhereKey.bottomAnchor(), 8),
+            self.metaTypeKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
+            self.metaTypeVal.centerYAnchor().constraintEqualToAnchor_(self.metaTypeKey.centerYAnchor()),
+            self.metaTypeVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaTypeKey.trailingAnchor(), 20),
+
+            self.metaSizeKey.topAnchor().constraintEqualToAnchor_constant_(self.metaTypeKey.bottomAnchor(), 8),
+            self.metaSizeKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
+            self.metaSizeVal.centerYAnchor().constraintEqualToAnchor_(self.metaSizeKey.centerYAnchor()),
+            self.metaSizeVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaSizeKey.trailingAnchor(), 20),
+
+            self.metaCreatedKey.topAnchor().constraintEqualToAnchor_constant_(self.metaSizeKey.bottomAnchor(), 8),
+            self.metaCreatedKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
+            self.metaCreatedVal.centerYAnchor().constraintEqualToAnchor_(self.metaCreatedKey.centerYAnchor()),
+            self.metaCreatedVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaCreatedKey.trailingAnchor(), 20),
+
+            self.metaModifiedKey.topAnchor().constraintEqualToAnchor_constant_(self.metaCreatedKey.bottomAnchor(), 8),
+            self.metaModifiedKey.leadingAnchor().constraintEqualToAnchor_constant_(self.rightPane.leadingAnchor(), 20),
+            self.metaModifiedVal.centerYAnchor().constraintEqualToAnchor_(self.metaModifiedKey.centerYAnchor()),
+            self.metaModifiedVal.leadingAnchor().constraintEqualToAnchor_constant_(self.metaModifiedKey.trailingAnchor(), 20)
+            ,
+            # Analysis Container fills area (hidden unless Analysis is selected)
             self.analysisContainer.topAnchor().constraintEqualToAnchor_constant_(self.navStackView.bottomAnchor(), 20),
             self.analysisContainer.leadingAnchor().constraintEqualToAnchor_(self.visualEffectView.leadingAnchor()),
             self.analysisContainer.trailingAnchor().constraintEqualToAnchor_(self.visualEffectView.trailingAnchor()),
             self.analysisContainer.bottomAnchor().constraintEqualToAnchor_(self.visualEffectView.bottomAnchor()),
-            
-            # Web View Constraints
+
             self.webView.topAnchor().constraintEqualToAnchor_(self.analysisContainer.topAnchor()),
             self.webView.leadingAnchor().constraintEqualToAnchor_(self.analysisContainer.leadingAnchor()),
             self.webView.trailingAnchor().constraintEqualToAnchor_(self.analysisContainer.trailingAnchor()),
@@ -310,7 +432,7 @@ class BrainApp(NSObject):
         self.searchField.setHidden_(not visible)
         self.reindexBtn.setHidden_(not visible)
         self.separator.setHidden_(not visible)
-        self.scrollView.setHidden_(not visible)
+        self.splitView.setHidden_(not visible)
 
     def setAnalysisVisible_(self, visible):
         if hasattr(self, 'analysisContainer'):
@@ -414,48 +536,20 @@ class BrainApp(NSObject):
         self.is_indexing = True
         
         try:
-            self.performSelectorOnMainThread_withObject_waitUntilDone_("updateStatus:", "Checking files...", False)
-            
-            # Pass existing model to avoid reloading it (saves RAM/CPU)
+            self.performSelectorOnMainThread_withObject_waitUntilDone_("updateStatus:", "Cleaning duplicates...", False)
             indexer = BrainIndexer(DB_PATH, model=self.model)
-            
-            # Get existing paths to avoid re-indexing
-            existing_paths = set()
+            # One-time cleanup to remove duplicates
             try:
-                rows = indexer.conn.execute("SELECT path FROM files_index").fetchall()
-                for r in rows:
-                    existing_paths.add(str(Path(r[0]).absolute()))
-            except Exception:
-                pass # Table might not exist yet
+                indexer.dedupe_index()
+            except Exception as e:
+                print(f"Cleanup error: {e}")
             
-            watch_dir = Path(WATCH_DIR)
-            
-            count = 0
-            extensions = {".pdf", ".txt", ".md", ".docx", ".ipynb", ".py", ".csv"}
-            
-            if watch_dir.exists():
-                for file in watch_dir.glob("*"):
-                    if file.is_file() and file.suffix.lower() in extensions:
-                        file_path = str(file.absolute())
-                        if file_path not in existing_paths:
-                            # Throttle UI updates
-                            if count % 5 == 0:
-                                self.performSelectorOnMainThread_withObject_waitUntilDone_("updateStatus:", f"Indexing {file.name}...", False)
-                            indexer.index_file(file)
-                            count += 1
-                            time.sleep(0.05) # Yield to prevent UI starvation
-            
+            self.performSelectorOnMainThread_withObject_waitUntilDone_("updateStatus:", "Checking files...", False)
+            indexer.sync_index(Path(WATCH_DIR))  # Only add new or remove missing
             indexer.close()
-            
-            if count > 0:
-                print(f"Indexed {count} new files")
-                self.performSelectorOnMainThread_withObject_waitUntilDone_("updateStatus:", f"Added {count} new files", False)
-                time.sleep(2)
-            else:
-                print("No new files found")
-            
             self.performSelectorOnMainThread_withObject_waitUntilDone_("updateStatus:", "Search your brain...", False)
-            
+            # Refresh current view (keep search text)
+            self.performSelectorOnMainThread_withObject_waitUntilDone_("refreshView:", None, False)
         except Exception as e:
             print(f"Reindexing error: {e}")
             self.performSelectorOnMainThread_withObject_waitUntilDone_("updateStatus:", "Indexing failed", False)
@@ -482,13 +576,18 @@ class BrainApp(NSObject):
         self.performSearch_(query)
 
     def performSearch_(self, query):
+        # Empty query → show recent files
         if not query or len(query) < 2:
-            self.clearResults()
+            threading.Thread(target=self._load_recent_files_thread, daemon=True).start()
             return
-            
+        
+        # Ensure model is available
         if not self.model:
-            return
-            
+            model = self._get_shared_model()
+            if not model:
+                print("Model loading; search deferred")
+                return
+        
         threading.Thread(target=self._search_thread, args=(query,), daemon=True).start()
 
     @objc.python_method
@@ -500,15 +599,37 @@ class BrainApp(NSObject):
         except Exception as e:
             print(f"Search error: {e}")
 
+    @objc.python_method
+    def _load_recent_files_thread(self):
+        try:
+            results = get_recent_files(DB_PATH)
+            self.performSelectorOnMainThread_withObject_waitUntilDone_("updateResults:", results, False)
+        except Exception as e:
+            print(f"Recent files error: {e}")
+
     def updateResults_(self, results):
         self.clearResults()
+        self.selected_path = None
         
-        for res in results:
-            row = SearchResultRow.alloc().initWithResult_callback_(res, self.revealInFinder)
+        for i, res in enumerate(results):
+            # Use click-to-select/open callback
+            row = SearchResultRow.alloc().initWithResult_callback_(res, self.onResultClicked_)
             self.stackView.addArrangedSubview_(row)
+            row.setWantsLayer_(True)
             
             # Width constraint
             row.widthAnchor().constraintEqualToAnchor_(self.stackView.widthAnchor()).setActive_(True)
+            
+            # Auto-select first result
+            if i == 0:
+                self.onResultClicked_(res[2])
+        # Ensure scroll starts at the top
+        try:
+            content_view = self.scrollView.contentView()
+            content_view.scrollToPoint_(NSPoint(0, 0))
+            self.scrollView.reflectScrolledClipView_(content_view)
+        except Exception:
+            pass
 
     @objc.python_method
     def clearResults(self):
@@ -517,24 +638,143 @@ class BrainApp(NSObject):
             view.removeFromSuperview()
 
     @objc.python_method
-    def revealInFinder(self, path):
+    def onResultClicked_(self, path):
+        # First click selects; clicking selected opens
+        if self.selected_path == path:
+            try:
+                NSWorkspace.sharedWorkspace().openFile_(path)
+            except Exception as e:
+                print(f"Open error: {e}")
+            return
+        
+        self.selected_path = path
+        self.updateSelectionVisuals()
+        self.updatePreview_(path)
+    
+    @objc.python_method
+    def updateSelectionVisuals(self):
+        for view in self.stackView.arrangedSubviews():
+            # Best-effort style highlight
+            try:
+                if hasattr(view, 'path') and view.path == self.selected_path:
+                    view.layer().setBackgroundColor_(NSColor.selectedControlColor().CGColor())
+                else:
+                    view.layer().setBackgroundColor_(NSColor.clearColor().CGColor())
+            except Exception:
+                pass
+
+    @objc.python_method
+    def updatePreview_(self, path):
         try:
-            ws = NSWorkspace.sharedWorkspace()
-            ws.selectFile_inFileViewerRootedAtPath_(path, None)
+            p = Path(path)
+            # Metadata
+            self.metaNameVal.setStringValue_(p.name)
+            self.metaWhereVal.setStringValue_(str(p.parent))
+            self.metaTypeVal.setStringValue_(p.suffix.lower() or "")
+            try:
+                sz = p.stat().st_size
+                self.metaSizeVal.setStringValue_(f"{sz} bytes")
+                try:
+                    created = datetime.fromtimestamp(p.stat().st_birthtime)
+                except AttributeError:
+                    created = datetime.fromtimestamp(p.stat().st_ctime)
+                modified = datetime.fromtimestamp(p.stat().st_mtime)
+                self.metaCreatedVal.setStringValue_(created.strftime("%b %d, %Y at %I:%M %p"))
+                self.metaModifiedVal.setStringValue_(modified.strftime("%b %d, %Y at %I:%M %p"))
+            except Exception:
+                pass
+
+            # Reset preview widgets visibility
+            self.previewImageView.setHidden_(True)
+            self.previewWebView.setHidden_(True)
+
+            ext = p.suffix.lower()
+            if ext in {".png", ".jpg", ".jpeg"}:
+                try:
+                    img = NSImage.alloc().initWithContentsOfFile_(str(p))
+                    if img:
+                        self.previewImageView.setImage_(img)
+                        self.previewImageView.setHidden_(False)
+                except Exception:
+                    pass
+            elif ext in {".pdf", ".html", ".htm"}:
+                try:
+                    url = NSURL.fileURLWithPath_(str(p))
+                    req = NSURLRequest.requestWithURL_(url)
+                    self.previewWebView.loadRequest_(req)
+                    self.previewWebView.setHidden_(False)
+                except Exception:
+                    pass
+            else:
+                # For text-like files, show small HTML preview via WebView using snippet from DB
+                try:
+                    conn = duckdb.connect(str(DB_PATH))
+                    row = conn.execute("SELECT text_snippet FROM files_index WHERE path = ?", [str(p.absolute())]).fetchone()
+                    conn.close()
+                    snippet = row[0] if row and row[0] else ""
+                    html = f"<html><body style='background:#1e1e1e;color:#ddd;font-family:system-ui;padding:12px;'><pre style='white-space:pre-wrap'>{snippet}</pre></body></html>"
+                    self.previewWebView.loadHTMLString_baseURL_(html, None)
+                    self.previewWebView.setHidden_(False)
+                except Exception:
+                    pass
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Preview error: {e}")
+
+    @objc.python_method
+    def start_watchdog(self):
+        try:
+            # Initialize indexer and sync on startup (no full reindex)
+            self.indexer = BrainIndexer(DB_PATH, model=self.model)
+            self.indexer.sync_index(Path(WATCH_DIR))
+            
+            # Watch for changes and refresh view when files are added/removed
+            self.observer = Observer()
+            handler = DownloadWatcherHandler(self.indexer, callback=self.onFileChanged)
+            self.observer.schedule(handler, str(WATCH_DIR), recursive=False)
+            self.observer.start()
+            print(f"Watching {WATCH_DIR} for changes.")
+        except Exception as e:
+            print(f"Error starting watchdog: {e}")
+
+    @objc.python_method
+    def onFileChanged(self):
+        # Called on add/delete → refresh current view without losing context
+        self.performSelectorOnMainThread_withObject_waitUntilDone_("refreshView:", None, False)
+
+    def refreshView_(self, sender):
+        query = self.searchField.stringValue()
+        self.performSearch_(query)
+
+    def ocrImageAtPath_(self, path):
+        """Run OCR on an image path and print a short preview."""
+        try:
+            if ocr_image is None:
+                print("OCR not available. Install pyobjc-framework-Vision or pytesseract+Pillow.")
+                return
+            text = ocr_image(Path(path))
+            if text:
+                preview = (text[:200] + "...") if len(text) > 200 else text
+                print(f"OCR Preview for {path}:\n{preview}")
+            else:
+                print("No text detected.")
+        except Exception as e:
+            print(f"OCR error: {e}")
 
     def applicationWillTerminate_(self, notification):
         if hasattr(self, 'streamlit_process') and self.streamlit_process:
             self.streamlit_process.terminate()
 
     @objc.python_method
-    def load_model(self):
-        try:
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
-            print("Model loaded")
-        except Exception as e:
-            print(f"Error loading model: {e}")
+    def _get_shared_model(self):
+        with self.model_lock:
+            if self.model is None:
+                try:
+                    # CPU to reduce memory
+                    self.model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+                    print("Model loaded (CPU)")
+                except Exception as e:
+                    print(f"Error loading model: {e}")
+            return self.model
 
 if __name__ == "__main__":
     app = NSApplication.sharedApplication()

@@ -1,0 +1,155 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script src="lib/bindings/utils.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 600px;
+                 background-color: #222222;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"font": {"color": "white"}, "group": 1, "id": 0, "label": "Industry Ethan Qiu Resume 2025.docx.pdf", "shape": "dot", "size": 10, "title": "Industry Ethan Qiu Resume 2025.docx.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 1, "label": "Ethan Qiu Resume 2025 Normal.docx.pdf", "shape": "dot", "size": 10, "title": "Ethan Qiu Resume 2025 Normal.docx.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 9, "label": "Copy of Ethan Qiu Resume 2025.docx (2).pdf", "shape": "dot", "size": 10, "title": "Copy of Ethan Qiu Resume 2025.docx (2).pdf"}, {"font": {"color": "white"}, "group": 1, "id": 17, "label": "Copy of Ethan Qiu Resume 2025.docx.pdf", "shape": "dot", "size": 10, "title": "Copy of Ethan Qiu Resume 2025.docx.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 18, "label": "wayland-la-RESUME.pdf", "shape": "dot", "size": 10, "title": "wayland-la-RESUME.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 33, "label": "Ethan Qiu Resume 2025.docx.pdf", "shape": "dot", "size": 10, "title": "Ethan Qiu Resume 2025.docx.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 52, "label": "Copy of Ethan Qiu Resume 2025.docx (1).pdf", "shape": "dot", "size": 10, "title": "Copy of Ethan Qiu Resume 2025.docx (1).pdf"}, {"font": {"color": "white"}, "group": 1, "id": 7, "label": "61a-fa22-mt1.pdf", "shape": "dot", "size": 10, "title": "61a-fa22-mt1.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 22, "label": "61a-sp23-final.pdf", "shape": "dot", "size": 10, "title": "61a-sp23-final.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 23, "label": "61a-sp22-mt1.pdf", "shape": "dot", "size": 10, "title": "61a-sp22-mt1.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 32, "label": "61a-fa22-final.pdf", "shape": "dot", "size": 10, "title": "61a-fa22-final.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 51, "label": "61a-fa23-final.pdf", "shape": "dot", "size": 10, "title": "61a-fa23-final.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 11, "label": "Homework_14-merged.pdf", "shape": "dot", "size": 10, "title": "Homework_14-merged.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 29, "label": "Homework_11 (1)-merged.pdf", "shape": "dot", "size": 10, "title": "Homework_11 (1)-merged.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 38, "label": "Homework_14.pdf", "shape": "dot", "size": 10, "title": "Homework_14.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 39, "label": "Homework_15.pdf", "shape": "dot", "size": 10, "title": "Homework_15.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 45, "label": "Homework_15 (1).pdf", "shape": "dot", "size": 10, "title": "Homework_15 (1).pdf"}, {"font": {"color": "white"}, "group": 1, "id": 57, "label": "Homework_12-merged.pdf", "shape": "dot", "size": 10, "title": "Homework_12-merged.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 12, "label": "Dante Final Draft .pdf", "shape": "dot", "size": 10, "title": "Dante Final Draft .pdf"}, {"font": {"color": "white"}, "group": 1, "id": 14, "label": "A Lectura Dantis_Sample Student Essay.pdf", "shape": "dot", "size": 10, "title": "A Lectura Dantis_Sample Student Essay.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 21, "label": "combinepdf.pdf", "shape": "dot", "size": 10, "title": "combinepdf.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 25, "label": "Dear - Revolutionizing the Sciences.pdf", "shape": "dot", "size": 10, "title": "Dear - Revolutionizing the Sciences.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 26, "label": "Data 140 hw 3.pdf", "shape": "dot", "size": 10, "title": "Data 140 hw 3.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 27, "label": "Data 140 Homework 4.pdf", "shape": "dot", "size": 10, "title": "Data 140 Homework 4.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 31, "label": "Homework 6.pdf", "shape": "dot", "size": 10, "title": "Homework 6.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 34, "label": "Data 140 Homework 4-merged.pdf", "shape": "dot", "size": 10, "title": "Data 140 Homework 4-merged.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 37, "label": "Homework 15-merged.pdf", "shape": "dot", "size": 10, "title": "Homework 15-merged.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 42, "label": "Homework 15.pdf", "shape": "dot", "size": 10, "title": "Homework 15.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 43, "label": "Henry.pdf", "shape": "dot", "size": 10, "title": "Henry.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 46, "label": "Homework 9-merged.pdf", "shape": "dot", "size": 10, "title": "Homework 9-merged.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 49, "label": "Homework 14.pdf", "shape": "dot", "size": 10, "title": "Homework 14.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 50, "label": "Homework 10.pdf", "shape": "dot", "size": 10, "title": "Homework 10.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 59, "label": "Homework 12.pdf", "shape": "dot", "size": 10, "title": "Homework 12.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 28, "label": "2025 Final study guide (1).pdf", "shape": "dot", "size": 10, "title": "2025 Final study guide (1).pdf"}, {"font": {"color": "white"}, "group": 1, "id": 44, "label": "2025 Final study guide.pdf", "shape": "dot", "size": 10, "title": "2025 Final study guide.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 47, "label": "hw05_blank_new.pdf", "shape": "dot", "size": 10, "title": "hw05_blank_new.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 55, "label": "HW5.pdf", "shape": "dot", "size": 10, "title": "HW5.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 54, "label": "1864035.pdf", "shape": "dot", "size": 10, "title": "1864035.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 56, "label": "1864034.pdf", "shape": "dot", "size": 10, "title": "1864034.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 2, "label": "Visualization - Google Docs.pdf", "shape": "dot", "size": 10, "title": "Visualization - Google Docs.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 3, "label": "Screen Shot 2021-06-14 at 9.34.33 PM.png", "shape": "dot", "size": 10, "title": "Screen Shot 2021-06-14 at 9.34.33 PM.png"}, {"font": {"color": "white"}, "group": 1, "id": 4, "label": "Screen Shot 2023-01-16 at 2.25.36 PM.png", "shape": "dot", "size": 10, "title": "Screen Shot 2023-01-16 at 2.25.36 PM.png"}, {"font": {"color": "white"}, "group": 1, "id": 5, "label": "Untitled document.docx", "shape": "dot", "size": 10, "title": "Untitled document.docx"}, {"font": {"color": "white"}, "group": 1, "id": 6, "label": "Sentence Transformers_ Meanings in Disguise _ Pinecone.pdf", "shape": "dot", "size": 10, "title": "Sentence Transformers_ Meanings in Disguise _ Pinecone.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 8, "label": "Assigned readings- Lindberg 98-105, 132-148, 163-192  .pdf", "shape": "dot", "size": 10, "title": "Assigned readings- Lindberg 98-105, 132-148, 163-192  .pdf"}, {"font": {"color": "white"}, "group": 1, "id": 10, "label": "Copy of [61B SP25] Project 2B Design Doc Template.pdf", "shape": "dot", "size": 10, "title": "Copy of [61B SP25] Project 2B Design Doc Template.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 13, "label": "CDSSLogo_forPosters.png", "shape": "dot", "size": 10, "title": "CDSSLogo_forPosters.png"}, {"font": {"color": "white"}, "group": 1, "id": 15, "label": "Copy of Ethan Qiu Cover Letter.pdf", "shape": "dot", "size": 10, "title": "Copy of Ethan Qiu Cover Letter.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 16, "label": "banknotes1.py", "shape": "dot", "size": 10, "title": "banknotes1.py"}, {"font": {"color": "white"}, "group": 1, "id": 19, "label": "Jason Shue Resume.pdf", "shape": "dot", "size": 10, "title": "Jason Shue Resume.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 20, "label": "data discovery write up .pdf", "shape": "dot", "size": 10, "title": "data discovery write up .pdf"}, {"font": {"color": "white"}, "group": 1, "id": 24, "label": "Data_Science_Cheatsheet.pdf", "shape": "dot", "size": 10, "title": "Data_Science_Cheatsheet.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 30, "label": "image (1).png", "shape": "dot", "size": 10, "title": "image (1).png"}, {"font": {"color": "white"}, "group": 1, "id": 35, "label": "Work_Process.pdf", "shape": "dot", "size": 10, "title": "Work_Process.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 36, "label": "197e6cc0-4221-417b-8a01-dce586380a54.pdf", "shape": "dot", "size": 10, "title": "197e6cc0-4221-417b-8a01-dce586380a54.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 40, "label": "lliffe.pdf", "shape": "dot", "size": 10, "title": "lliffe.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 41, "label": "Quiz_ A6_ Earthquake Prediction, Forecasting, and Early Warning.pdf", "shape": "dot", "size": 10, "title": "Quiz_ A6_ Earthquake Prediction, Forecasting, and Early Warning.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 48, "label": "github-recovery-codes.txt", "shape": "dot", "size": 10, "title": "github-recovery-codes.txt"}, {"font": {"color": "white"}, "group": 1, "id": 53, "label": "Copy of [61B SP25] Project 3 Design Doc Template.pdf", "shape": "dot", "size": 10, "title": "Copy of [61B SP25] Project 3 Design Doc Template.pdf"}, {"font": {"color": "white"}, "group": 1, "id": 58, "label": "Ethan Qiu.docx", "shape": "dot", "size": 10, "title": "Ethan Qiu.docx"}, {"font": {"color": "white"}, "group": 1, "id": 60, "label": "download (1).jpeg", "shape": "dot", "size": 10, "title": "download (1).jpeg"}, {"font": {"color": "white"}, "group": 1, "id": 61, "label": "75886476448__E9A6AE40-D7DA-446F-96EC-5673F7DD5729.jpg", "shape": "dot", "size": 10, "title": "75886476448__E9A6AE40-D7DA-446F-96EC-5673F7DD5729.jpg"}, {"font": {"color": "white"}, "group": 1, "id": 62, "label": "CoverLetterImage4.png", "shape": "dot", "size": 10, "title": "CoverLetterImage4.png"}]);
+                  edges = new vis.DataSet([{"from": 0, "title": "Similarity: 0.75", "to": 1, "value": 0.7536662817001343, "width": 1}, {"from": 0, "title": "Similarity: 0.71", "to": 9, "value": 0.7134304046630859, "width": 1}, {"from": 0, "title": "Similarity: 0.84", "to": 17, "value": 0.8421544432640076, "width": 1}, {"from": 0, "title": "Similarity: 0.86", "to": 18, "value": 0.8554611802101135, "width": 1}, {"from": 0, "title": "Similarity: 0.76", "to": 33, "value": 0.7615138292312622, "width": 1}, {"from": 0, "title": "Similarity: 0.79", "to": 52, "value": 0.7927559614181519, "width": 1}, {"from": 1, "title": "Similarity: 0.87", "to": 9, "value": 0.8694185018539429, "width": 1}, {"from": 1, "title": "Similarity: 0.70", "to": 17, "value": 0.6979251503944397, "width": 1}, {"from": 1, "title": "Similarity: 0.66", "to": 18, "value": 0.6569108366966248, "width": 1}, {"from": 1, "title": "Similarity: 0.68", "to": 33, "value": 0.6798253655433655, "width": 1}, {"from": 1, "title": "Similarity: 0.70", "to": 52, "value": 0.7016888856887817, "width": 1}, {"from": 9, "title": "Similarity: 0.68", "to": 17, "value": 0.6788947582244873, "width": 1}, {"from": 9, "title": "Similarity: 0.65", "to": 18, "value": 0.6452268362045288, "width": 1}, {"from": 9, "title": "Similarity: 0.64", "to": 33, "value": 0.6409882307052612, "width": 1}, {"from": 9, "title": "Similarity: 0.63", "to": 52, "value": 0.627491295337677, "width": 1}, {"from": 17, "title": "Similarity: 0.78", "to": 18, "value": 0.7761386036872864, "width": 1}, {"from": 17, "title": "Similarity: 0.87", "to": 33, "value": 0.8713511228561401, "width": 1}, {"from": 17, "title": "Similarity: 0.82", "to": 52, "value": 0.8157041072845459, "width": 1}, {"from": 18, "title": "Similarity: 0.71", "to": 33, "value": 0.7051982879638672, "width": 1}, {"from": 18, "title": "Similarity: 0.74", "to": 52, "value": 0.7379283308982849, "width": 1}, {"from": 33, "title": "Similarity: 0.70", "to": 52, "value": 0.7045970559120178, "width": 1}, {"from": 7, "title": "Similarity: 0.63", "to": 22, "value": 0.6267961263656616, "width": 1}, {"from": 7, "title": "Similarity: 0.63", "to": 23, "value": 0.6291131377220154, "width": 1}, {"from": 7, "title": "Similarity: 0.65", "to": 32, "value": 0.6473029255867004, "width": 1}, {"from": 7, "title": "Similarity: 0.65", "to": 51, "value": 0.6472130417823792, "width": 1}, {"from": 22, "title": "Similarity: 0.99", "to": 23, "value": 0.9911280274391174, "width": 1}, {"from": 22, "title": "Similarity: 0.99", "to": 32, "value": 0.9943563342094421, "width": 1}, {"from": 22, "title": "Similarity: 0.99", "to": 51, "value": 0.9943957328796387, "width": 1}, {"from": 23, "title": "Similarity: 0.99", "to": 32, "value": 0.9870600700378418, "width": 1}, {"from": 23, "title": "Similarity: 0.99", "to": 51, "value": 0.9867021441459656, "width": 1}, {"from": 32, "title": "Similarity: 1.00", "to": 51, "value": 0.9999473094940186, "width": 1}, {"from": 11, "title": "Similarity: 0.99", "to": 29, "value": 0.9890836477279663, "width": 1}, {"from": 11, "title": "Similarity: 1.00", "to": 38, "value": 0.9999998807907104, "width": 1}, {"from": 11, "title": "Similarity: 1.00", "to": 39, "value": 0.9993570446968079, "width": 1}, {"from": 11, "title": "Similarity: 1.00", "to": 45, "value": 0.9993570446968079, "width": 1}, {"from": 11, "title": "Similarity: 0.99", "to": 57, "value": 0.9900500178337097, "width": 1}, {"from": 29, "title": "Similarity: 0.99", "to": 38, "value": 0.9890836477279663, "width": 1}, {"from": 29, "title": "Similarity: 0.99", "to": 39, "value": 0.9888983368873596, "width": 1}, {"from": 29, "title": "Similarity: 0.99", "to": 45, "value": 0.9888983368873596, "width": 1}, {"from": 29, "title": "Similarity: 1.00", "to": 57, "value": 0.9983422756195068, "width": 1}, {"from": 38, "title": "Similarity: 1.00", "to": 39, "value": 0.9993570446968079, "width": 1}, {"from": 38, "title": "Similarity: 1.00", "to": 45, "value": 0.9993570446968079, "width": 1}, {"from": 38, "title": "Similarity: 0.99", "to": 57, "value": 0.9900500178337097, "width": 1}, {"from": 39, "title": "Similarity: 1.00", "to": 45, "value": 1.000000238418579, "width": 1}, {"from": 39, "title": "Similarity: 0.99", "to": 57, "value": 0.9891741275787354, "width": 1}, {"from": 45, "title": "Similarity: 0.99", "to": 57, "value": 0.9891741275787354, "width": 1}, {"from": 12, "title": "Similarity: 0.73", "to": 14, "value": 0.7252864837646484, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 25, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 26, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 27, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 31, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 34, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 37, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 42, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 43, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 21, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 26, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 27, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 31, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 34, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 37, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 42, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 43, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 25, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 27, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 31, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 34, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 37, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 42, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 43, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 26, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 31, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 34, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 37, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 42, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 43, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 27, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 31, "title": "Similarity: 1.00", "to": 34, "value": 1.0, "width": 1}, {"from": 31, "title": "Similarity: 1.00", "to": 37, "value": 1.0, "width": 1}, {"from": 31, "title": "Similarity: 1.00", "to": 42, "value": 1.0, "width": 1}, {"from": 31, "title": "Similarity: 1.00", "to": 43, "value": 1.0, "width": 1}, {"from": 31, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 31, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 31, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 31, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 34, "title": "Similarity: 1.00", "to": 37, "value": 1.0, "width": 1}, {"from": 34, "title": "Similarity: 1.00", "to": 42, "value": 1.0, "width": 1}, {"from": 34, "title": "Similarity: 1.00", "to": 43, "value": 1.0, "width": 1}, {"from": 34, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 34, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 34, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 34, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 37, "title": "Similarity: 1.00", "to": 42, "value": 1.0, "width": 1}, {"from": 37, "title": "Similarity: 1.00", "to": 43, "value": 1.0, "width": 1}, {"from": 37, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 37, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 37, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 37, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 42, "title": "Similarity: 1.00", "to": 43, "value": 1.0, "width": 1}, {"from": 42, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 42, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 42, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 42, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 43, "title": "Similarity: 1.00", "to": 46, "value": 1.0, "width": 1}, {"from": 43, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 43, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 43, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 46, "title": "Similarity: 1.00", "to": 49, "value": 1.0, "width": 1}, {"from": 46, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 46, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 49, "title": "Similarity: 1.00", "to": 50, "value": 1.0, "width": 1}, {"from": 49, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 50, "title": "Similarity: 1.00", "to": 59, "value": 1.0, "width": 1}, {"from": 28, "title": "Similarity: 1.00", "to": 44, "value": 0.9999994039535522, "width": 1}, {"from": 47, "title": "Similarity: 1.00", "to": 55, "value": 1.0, "width": 1}, {"from": 54, "title": "Similarity: 1.00", "to": 56, "value": 0.9999997019767761, "width": 1}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {
+    "configure": {
+        "enabled": false
+    },
+    "edges": {
+        "color": {
+            "inherit": true
+        },
+        "smooth": {
+            "enabled": true,
+            "type": "dynamic"
+        }
+    },
+    "interaction": {
+        "dragNodes": true,
+        "hideEdgesOnDrag": false,
+        "hideNodesOnDrag": false
+    },
+    "physics": {
+        "enabled": true,
+        "stabilization": {
+            "enabled": true,
+            "fit": true,
+            "iterations": 1000,
+            "onlyDynamicEdges": false,
+            "updateInterval": 50
+        }
+    }
+};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>
